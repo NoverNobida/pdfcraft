@@ -1,0 +1,184 @@
+--- a/apps/pdfcraft-web/index.html
++++ b/apps/pdfcraft-web/index.html
+@@ -1,8 +1,9 @@
+ <!doctype html>
+-<html lang="en">
++<html lang="zh-Hans">
+   <head>
+     <meta charset="utf-8" />
+     <meta name="viewport" content="width=device-width, initial-scale=1" />
+     <title>PdfCraft</title>
++    <link data-trunk rel="icon" href="../../assets/app-icon/pdfcraft.svg" type="image/svg+xml" />
+     <link data-trunk rel="rust" data-wasm-opt="z" />
+     <!-- Recognises text off the page's thread (crates/ui-egui/src/workflows/ocr_web.rs). -->
+--- a/crates/fonts/build.rs
++++ b/crates/fonts/build.rs
+@@ -1,5 +1,5 @@
+ //! Embeds the fonts of the optional craft-fonts build input (`CRAFT_FONTS_DIR`) as `CRAFT_FONTS`.
+ //! The recipe is craft-fonts' `docs/integration.md`; unset, `CRAFT_FONTS` is empty. It only reads
+-//! the local checkout (no network). On wasm32 it embeds only the UI faces (BIZ UDPGothic Regular
++//! the local checkout (no network). On wasm32 it embeds only the UI faces (BIZ UDPGothic Regular, Noto Sans CJK SC Regular
+ //! and any `Arab`, `Telu`, `Hebr`, `Thai` or `Deva` face), to keep the web build within hosting
+ //! limits (Cloudflare Pages: 25 MiB per file). Native builds also read the optional
+@@ -105,5 +105,5 @@
+         // Devanagari too, for the Hindi interface (one small face).
+         let devanagari = scripts.split(',').any(|s| s.trim() == "Deva");
+-        let web_face = (*family == "BIZ UDPGothic" && *style == "Regular")
++        let web_face = ((*family == "BIZ UDPGothic" || *family == "Noto Sans CJK SC") && *style == "Regular")
+             || arabic
+             || telugu
+--- a/crates/fonts/src/cjk_scripts.rs
++++ b/crates/fonts/src/cjk_scripts.rs
+@@ -44,5 +44,9 @@
+ /// The size cap that applies to `family` in this build.
+ pub fn cjk_cap_bytes(family: &str, wasm: bool) -> u64 {
+-    if !wasm && NATIVE_UI_CJK_FAMILIES.contains(&family) { MAX_NATIVE_UI_CJK_BYTES } else { MAX_OTHER_CJK_BYTES }
++    if family == "Noto Sans CJK SC" || (!wasm && NATIVE_UI_CJK_FAMILIES.contains(&family)) {
++        MAX_NATIVE_UI_CJK_BYTES
++    } else {
++        MAX_OTHER_CJK_BYTES
++    }
+ }
+ 
+--- a/crates/ui-egui/src/app.rs
++++ b/crates/ui-egui/src/app.rs
+@@ -112,5 +112,5 @@
+             animation_effects: motion::AnimationEffects::default(),
+             motion: motion::Motion::default(),
+-            language: i18n::AUTO.to_string(),
++            language: "zh-hans".to_string(),
+             ui_scale: None,
+             system_text_scale: 1.0,
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -1671,5 +1671,5 @@
+         _ => {
+             ui.horizontal(|ui| {
+-                widgets::artcraft_mark(ui, 40.0);
++                widgets::pdfcraft_mark(ui, 40.0);
+                 ui.vertical(|ui| {
+                     ui.label(egui::RichText::new("PdfCraft").font(theme::semibold(20.0)));
+@@ -1687,9 +1687,4 @@
+             );
+             ui.add_space(12.0);
+-            ui.horizontal(|ui| {
+-                ui.label(egui::RichText::new(tl!("Part of")).color(t.text_muted));
+-                widgets::artcraft_logo(ui, 16.0);
+-            });
+-            ui.add_space(6.0);
+             if let Some(cmd) = widgets::community_links(ui) {
+                 req.link_command = Some(cmd);
+--- a/crates/ui-egui/src/home.rs
++++ b/crates/ui-egui/src/home.rs
+@@ -93,5 +93,5 @@
+                         ui.set_width(ui.available_width());
+                         ui.horizontal(|ui| {
+-                            widgets::artcraft_mark(ui, 28.0);
++                            widgets::pdfcraft_mark(ui, 28.0);
+                             ui.vertical(|ui| {
+                                 ui.label(egui::RichText::new(tl!("Join the ArtCraft community")).font(theme::semibold(15.0)));
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -15,5 +15,7 @@
+ pub const UPDATE_APP: craft_update::app::App = craft_update::app::App {
+     icon_png: Some(include_bytes!("../../../assets/app-icon/hicolor/128x128/apps/ai.storyteller.pdfcraft.png")),
+-    accent: Some([0xb7, 0x02, 0x28]),
++    accent: Some([0x17, 0x54, 0xb6]),
++    repo: "NoverNobida/pdfcraft",
++    developer: "NoverNobida",
+     ..craft_update::suite::PDFCRAFT
+ };
+--- a/crates/ui-egui/src/platform/updates.rs
++++ b/crates/ui-egui/src/platform/updates.rs
+@@ -11,5 +11,5 @@
+ 
+ /// Where every PdfCraft release is listed.
+-pub const RELEASES_PAGE: &str = "https://github.com/storytold/pdfcraft/releases";
++pub const RELEASES_PAGE: &str = "https://github.com/NoverNobida/pdfcraft/releases";
+ 
+ /// Stands in for the network in tests.
+--- a/crates/ui-egui/src/theme.rs
++++ b/crates/ui-egui/src/theme.rs
+@@ -290,12 +290,20 @@
+             }
+         }
+-        let need = installed_fallback_need(cjk, !pdfcraft_fonts::ui_chinese_fonts().is_empty());
++        // In the Windows build, installed Chinese faces take priority over the bundled fallback.
++        let prefer_installed_hans = cfg!(windows) && cjk == CjkPreference::SimplifiedChinese;
++        let has_embedded_hans = !prefer_installed_hans && !pdfcraft_fonts::ui_chinese_fonts().is_empty();
++        let need = installed_fallback_need(cjk, has_embedded_hans);
+         if let Some(data) = fallback(need) {
+             fonts.font_data.insert(SYSTEM_FALLBACK.to_owned(), data);
+-            let japanese: Vec<String> = pdfcraft_fonts::ui_japanese_fonts().iter().map(|f| f.name()).collect();
++            let before = if prefer_installed_hans {
++                pdfcraft_fonts::ui_cjk_fonts(true)
++            } else {
++                pdfcraft_fonts::ui_japanese_fonts()
++            };
++            let names: Vec<String> = before.into_iter().map(|face| face.name()).collect();
+             for stack in fonts.families.values_mut() {
+                 let at = match need {
+                     Need::Other => None,
+-                    Need::Hans | Need::Hant => stack.iter().position(|n| japanese.contains(n)),
++                    Need::Hans | Need::Hant => stack.iter().position(|n| names.contains(n)),
+                 };
+                 stack.insert(at.unwrap_or(stack.len()), SYSTEM_FALLBACK.to_owned());
+--- a/crates/ui-egui/src/widgets.rs
++++ b/crates/ui-egui/src/widgets.rs
+@@ -633,21 +633,10 @@
+ }
+ 
+-/// The ArtCraft wordmark (Storyteller's brand, docs/brand/; not open source), sized to `height`.
+-pub fn artcraft_logo(ui: &mut egui::Ui, height: f32) -> Response {
+-    let dark = ui.visuals().dark_mode;
+-    let (uri, bytes): (&str, &'static [u8]) = if dark {
+-        ("bytes://artcraft-logo-white.svg", include_bytes!("../../../docs/brand/artcraft-logo-white.svg"))
+-    } else {
+-        ("bytes://artcraft-logo.svg", include_bytes!("../../../docs/brand/artcraft-logo.svg"))
+-    };
+-    ui.add(egui::Image::from_bytes(uri, bytes).max_height(height).alt_text("ArtCraft"))
+-}
+-
+-/// The ArtCraft mark (brand blue, works on light and dark), `size` points square.
+-pub fn artcraft_mark(ui: &mut egui::Ui, size: f32) -> Response {
++/// The app icon at the requested size.
++pub fn pdfcraft_mark(ui: &mut egui::Ui, size: f32) -> Response {
+     ui.add(
+-        egui::Image::from_bytes("bytes://artcraft-mark.svg", include_bytes!("../../../docs/brand/artcraft-mark.svg"))
++        egui::Image::from_bytes("bytes://pdfcraft.svg", include_bytes!("../../../assets/app-icon/pdfcraft.svg"))
+             .fit_to_exact_size(vec2(size, size))
+-            .alt_text("ArtCraft"),
++            .alt_text("PdfCraft"),
+     )
+ }
+--- a/packaging/windows/pdfcraft.wxs
++++ b/packaging/windows/pdfcraft.wxs
+@@ -4,6 +4,6 @@
+   <?define HasCraftFontLicences=0 ?>
+   <?endif?>
+-  <Package Name="PdfCraft" Manufacturer="Learning Machines LLC" Version="$(var.Version)" UpgradeCode="EA00C367-7270-4C50-9D8B-A7A5C88AD27F" Scope="perUserOrMachine" Compressed="yes" Language="1033">
+-    <SummaryInformation Description="PdfCraft PDF workbench" Manufacturer="Learning Machines LLC" />
++  <Package Name="PdfCraft" Manufacturer="NoverNobida" Version="$(var.Version)" UpgradeCode="EA00C367-7270-4C50-9D8B-A7A5C88AD27F" Scope="perUserOrMachine" Compressed="yes" Language="1033">
++    <SummaryInformation Description="PdfCraft PDF workbench" Manufacturer="NoverNobida" />
+     <?include $(sys.SOURCEFILEDIR)install-policy.wxi?>
+     <!-- HKLM registrations must never point into a per-user installation (#305). Allow removal
+@@ -18,7 +18,7 @@
+     <Icon Id="PdfcraftIcon.ico" SourceFile="$(var.IconPath)" />
+     <Property Id="ARPPRODUCTICON" Value="PdfcraftIcon.ico" />
+-    <Property Id="ARPURLINFOABOUT" Value="https://getartcraft.com/apps/pdfcraft" />
+-    <Property Id="ARPURLUPDATEINFO" Value="https://getartcraft.com/apps/pdfcraft" />
+-    <Property Id="ARPHELPLINK" Value="https://discord.gg/artcraft" />
++    <Property Id="ARPURLINFOABOUT" Value="https://github.com/NoverNobida/pdfcraft" />
++    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/NoverNobida/pdfcraft/releases" />
++    <Property Id="ARPHELPLINK" Value="https://github.com/NoverNobida/pdfcraft/issues" />
+     <!-- Desktop shortcut (#143): on by default for a first install, a checkbox in the full-UI
+          welcome dialog, and INSTALLDESKTOPSHORTCUT=0 on the msiexec command line for unattended
+--- a/packaging/windows/test-msi.ps1
++++ b/packaging/windows/test-msi.ps1
+@@ -45,5 +45,5 @@
+ $Installer.UILevel = 2
+ $manufacturer = Read-Row 'SELECT `Value` FROM `Property` WHERE `Property` = ''Manufacturer''' 1
+-Assert-Equal $manufacturer[0] 'Learning Machines LLC' 'MSI manufacturer'
++Assert-Equal $manufacturer[0] 'NoverNobida' 'MSI manufacturer'
+ 
+ # Embedded craft-fonts must ship their OFL notices; a build without them must not claim any.
