@@ -23,7 +23,7 @@ Windows 优先使用系统已安装的简体中文字体（首选微软雅黑）
 
 ## 发布流程
 
-[GitHub Actions](https://github.com/NoverNobida/pdfcraft/actions/workflows/release.yml) 每天北京时间 09:17 查询上游的最新正式 Release，也可以手动运行。遇到多个上游版本时只构建 GitHub 标记为最新的版本。已经发布的标签会跳过，缺失或不兼容的构建输入会报错。
+[GitHub Actions](https://github.com/NoverNobida/pdfcraft/actions/workflows/release.yml) 计划在每天北京时间 09:17 查询上游的最新正式 Release，实际触发时间可能因 GitHub Actions 调度而延后，也可以手动运行。遇到多个上游版本时只构建 GitHub 标记为最新的版本。已经发布的标签会跳过，缺失或不兼容的构建输入会报错。
 
 工作流按上游标签解析出提交，在临时目录中应用 [构建补丁](patches/pdfcraft.patch) 并替换应用图标。翻译和字体沿用该上游版本锁定的依赖提交。两端构建成功后，以相同标签发布安装包、网页包和未修改的上游源码。
 

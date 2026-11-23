@@ -42,8 +42,7 @@
  
 --- a/crates/ui-egui/src/app.rs
 +++ b/crates/ui-egui/src/app.rs
-@@ -112,5 +112,5 @@
-             animation_effects: motion::AnimationEffects::default(),
+@@ -113,4 +113,4 @@
              motion: motion::Motion::default(),
 -            language: i18n::AUTO.to_string(),
 +            language: "zh-hans".to_string(),
